@@ -292,7 +292,7 @@ def process_image_with_query():
         
         chat_history.extend([
             {"role": "user", "content": query_text, "audio": None, "image": public_url if public_url else None},
-            {"role": "assistant", "content": llm_response}
+            {"role": "assistant", "content": llm_response, "audio": None, "image": None}
         ])
         save_chat_history(conversation_id, chat_history)
         
