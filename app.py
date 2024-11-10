@@ -147,7 +147,7 @@ def save_chat_history(conversation_id: str, messages: list):
     """Save chat history to GCS using conversation ID."""
     try:
         blob = bucket.blob(f"history/chats/{conversation_id}.json")
-        blob.upload_from_string(json.dumps(messages))
+        blob.upload_from_string(json.dumps(messages, indent=4))
         logger.info(f"Chat history saved for conversation ID: {conversation_id}")
     except Exception as e:
         logger.error(f"Error saving chat history: {str(e)}")
@@ -240,7 +240,7 @@ def get_image_response(message: str, image_url: str, context: str, chat_history:
         return "I apologize, but I encountered an error while processing the image. Please try again or consider using a different image."
 
 @app.route('/aiyshavision', methods=['POST'])
-def process_image_with_query():
+def process_image():
     try:
         if 'file' not in request.files:
             return jsonify({"error": "No image file in request"}), 400
@@ -308,5 +308,5 @@ def process_image_with_query():
         logger.error(f"Unexpected error in processing vision request: {str(e)}")
         return jsonify({"error": "An unexpected error occurred"}), 500
     
-if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+# if __name__ == "__main__":
+#     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
