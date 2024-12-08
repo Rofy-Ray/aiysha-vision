@@ -1,17 +1,21 @@
 import os
+import io
 import time
 import json
 import uuid
 import openai
 import logging
 import requests
+import base64
+from PIL import Image
+from flask_cors import CORS
 from dotenv import load_dotenv
 from functools import lru_cache
 from google.cloud import storage
 from langchain_chroma import Chroma
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 from google.auth import default, transport
+from werkzeug.datastructures import FileStorage
 from langchain_community.embeddings import FastEmbedEmbeddings
 
 load_dotenv()
@@ -53,6 +57,31 @@ def acquire_lock():
 def release_lock():
     if os.path.exists(LOCK_FILE):
         os.remove(LOCK_FILE)
+
+def base64_to_file_storage(base64_string, filename='image.jpg'):
+    """Convert base64 string to a FileStorage object compatible with Flask."""
+    if ',' in base64_string:
+        base64_string = base64_string.split(',')[1]
+    
+    try:
+        image_data = base64.b64decode(base64_string)
+        
+        image_buffer = io.BytesIO(image_data)
+        
+        with Image.open(image_buffer) as img:
+            file_ext = img.format.lower() if img.format else 'jpg'
+            filename = f'image.{file_ext}'
+        
+        image_buffer.seek(0)
+        
+        return FileStorage(
+            stream=image_buffer, 
+            filename=filename, 
+            content_type=f'image/{file_ext}'
+        )
+    except Exception as e:
+        logger.error(f"Error converting base64 to file: {str(e)}")
+        raise ValueError(f"Invalid base64 image: {str(e)}")
 
 def upload_image_to_gcs(image_file):
     """Upload image to GCS and return URIs."""
@@ -242,20 +271,28 @@ def get_image_response(message: str, image_url: str, context: str, chat_history:
 @app.route('/aiyshavision', methods=['POST'])
 def process_image():
     try:
-        if 'file' not in request.files:
-            return jsonify({"error": "No image file in request"}), 400
+        if 'file' not in request.files and 'base64_image' not in request.form:
+            return jsonify({"error": "No image file or base64 image in request"}), 400
         
         if 'query' not in request.form:
             return jsonify({"error": "No query text in request"}), 400
         
-        image_file = request.files['file']
-        query_text = request.form['query'].strip()
-        
-        if image_file.filename == '':
-            return jsonify({"error": "No selected file"}), 400
+        image_file = None
+        if 'file' in request.files:
+            image_file = request.files['file']
+            if image_file.filename == '':
+                return jsonify({"error": "No selected file"}), 400
+        elif 'base64_image' in request.form:
+            try:
+                base64_image = request.form['base64_image']
+                image_file = base64_to_file_storage(base64_image)
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
         
         if not allowed_file(image_file.filename):
             return jsonify({"error": "Invalid file type"}), 400
+        
+        query_text = request.form['query'].strip()
         
         if not query_text:
             return jsonify({"error": "Query text cannot be empty"}), 400
